@@ -68,6 +68,7 @@ input[type=text],input[type=date],textarea{font-size:16px;color:var(--tx);border
 .sig{width:100%;border-collapse:collapse;margin:4px 0 12px;background:var(--card)}.sig th,.sig td{border:1.5px solid var(--tx);padding:0}.sig th{padding:6px;font-size:14px;color:var(--tx)}.sig .lab{text-align:left;width:76px;padding:6px 4px}.sig input[type=text]{border:0;background:transparent;border-radius:0;padding:8px;width:100%;font-size:16px;color:var(--tx)}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:8px}.sig input[type=checkbox]{width:22px;height:22px;margin:6px}
 .tog{position:absolute;right:10px;top:10px;display:inline-flex;border:1px solid #bbb;border-radius:999px;overflow:hidden;background:#fff}.tog button{border:0;border-radius:0;background:transparent;padding:4px 10px;font-size:16px;line-height:1.2;cursor:pointer;filter:grayscale(.7);opacity:.7}.tog button.on{background:#cd1719;filter:none;opacity:1}
+.fl{display:flex;gap:4px;align-items:center;font-size:14px;font-weight:600;margin-bottom:2px;min-height:30px}.fl input{flex:1;min-width:0;font-weight:600;padding:4px 6px}.fh{margin:14px 0 4px;font-size:15px;color:var(--pri)}
 @media print{#viewer{display:none!important}.pair>.col:first-child{display:none!important}.pair{grid-template-columns:1fr!important}.pair .ph{max-width:360px}.pnote{display:none!important}}
 @media print{
  :root{--bg:#fff;--card:#fff;--tx:#000;--mut:#444;--bd:#bbb}
@@ -197,58 +198,49 @@ function loadImg(src){return new Promise(function(ok){var im=new Image();im.onlo
 async function buildTextPdf(PDFLib,fontkit,d){
  var rgb=PDFLib.rgb,pdf=await PDFLib.PDFDocument.create();pdf.registerFontkit(fontkit);
  var fR=await pdf.embedFont(d.fontR,{subset:false}),fB=await pdf.embedFont(d.fontB,{subset:false});
- var W=595.28,H=841.89,M=36,CW=W-2*M,red=rgb(.804,.09,.098),ink=rgb(.11,.11,.12),blk=rgb(0,0,0),form=pdf.getForm();
- var page=pdf.addPage([W,H]),f=d.f;
- function field(name,val,x,top,w,h,font,size,o){o=o||{};var tf=form.createTextField(name);tf.setText(val||"");if(o.multi)tf.enableMultiline();
+ var W=595.28,H=841.89,M=36,CW=W-2*M,red=rgb(.804,.09,.098),ink=rgb(.11,.11,.12),blk=rgb(0,0,0),gray=rgb(.86,.86,.86),form=pdf.getForm();
+ var page=pdf.addPage([W,H]),f=d.f,n=0,rh=20,hf=CW/2;
+ function nm(p){return p+(n++);}
+ function fit(tx,font,size,w){while(size>7&&font.widthOfTextAtSize(tx||"",size)>w)size-=.5;return size;}
+ function field(name,val,x,top,w,h,font,size,o){o=o||{};var tf=form.createTextField(name);tf.setText(val||"");if(o.multi)tf.enableMultiline();else size=fit(val,font,size,w-6);
   var opt={x:x,y:H-top-h,width:w,height:h,font:font,textColor:o.color||ink,borderWidth:o.bare?0:0.8};
   if(!o.bare){opt.borderColor=rgb(.8,.74,.74);opt.backgroundColor=rgb(1,1,1);}
   tf.addToPage(page,opt);if(o.center)tf.setAlignment(PDFLib.TextAlignment.Center);tf.setFontSize(size);tf.updateAppearances(font);}
  function txt(t,x,top,size,font,color){page.drawText(t,{x:x,y:H-top-size,size:size,font:font,color:color||ink});}
  function ctxt(t,x,top,w,h,size,font,color){txt(t,x+(w-font.widthOfTextAtSize(t,size))/2,top+(h-size)/2-1,size,font,color);}
  function box(x,top,w,h,fill){page.drawRectangle({x:x,y:H-top-h,width:w,height:h,borderColor:blk,borderWidth:.7,color:fill||rgb(1,1,1)});}
- function cell(x,top,w,h,label,name,val){box(x,top,w,h);var lw=label?fB.widthOfTextAtSize(label,10)+6:0;if(label)txt(label,x+3,top+(h-10)/2-1,10,fB);if(name)field(name,val,x+lw,top+1,w-lw-1,h-2,fR,11,{bare:true});}
- function wrap(t,font,size,max){var segs=(typeof Intl!=="undefined"&&Intl.Segmenter)?Array.from(new Intl.Segmenter("th",{granularity:"word"}).segment(t),function(q){return q.segment}):Array.from(t);var lines=[],cur="";
+ function cell(x,top,w,h,label,name,val){box(x,top,w,h);var lw=0;if(label){lw=Math.min(fB.widthOfTextAtSize(label,10)+6,w*.6);txt(label,x+3,top+(h-10)/2-1,fit(label,fB,10,lw-6)===10?10:10,fB);}if(name)field(name,val,x+lw,top+1,w-lw-1,h-2,fR,11,{bare:true});}
+ function wrap(tx,font,size,max){var segs=(typeof Intl!=="undefined"&&Intl.Segmenter)?Array.from(new Intl.Segmenter("th",{granularity:"word"}).segment(tx),function(q){return q.segment}):Array.from(tx);var lines=[],cur="";
   segs.forEach(function(q){if(q==="\n"){lines.push(cur);cur="";return;}if(cur&&font.widthOfTextAtSize(cur+q,size)>max){lines.push(cur);cur=q.trim()?q:"";}else cur+=q;});lines.push(cur);return lines.join("\n");}
- var li=d.logo?await pdf.embedJpg(d.logo):null;
- // ---- page 1: form
+ var li=d.logo?await pdf.embedJpg(d.logo):null,t;
+ function ensure(h){if(t+h>H-M){page=pdf.addPage([W,H]);t=M;}}
+ function section(title){ensure(54);box(M,t,CW,14,gray);ctxt(title,M,t,CW,14,10,fB);t+=14;}
+ function thead(heads,xs,cs){heads.forEach(function(h,i){box(xs[i],t,cs[i],16);ctxt(h,xs[i],t,cs[i],16,10,fB);});t+=16;}
+ // ---- form page
  box(M,36,CW,26);ctxt("TESTING & COMMISSIONING REPORT",M,36,CW,26,17,fB);
  if(li)page.drawImage(li,{x:M+4,y:H-39-20,width:20*li.width/li.height,height:20});
- var LW=323,RW=CW-LW,t=62;
- box(M,t,LW,36);txt("Testing Item :",M+3,t+3,10,fB);field("f_item",f.item,M+70,t+8,LW-140,26,fB,17,{bare:true,center:true,color:red});
- cell(M+LW,t,RW,18,"REF NO :","f_ref",f.ref);cell(M+LW,t+18,RW,18,"Date :","f_rdate",f.rdate);
- cell(M,98,LW,18,"Project Name :","f_site",f.site);cell(M+LW,98,RW,18,"Date of Testing :","f_dt",f.dt);
- cell(M,116,LW/2,18,"Location :","f_loc",f.loc);cell(M+LW/2,116,LW/2,18,"Refer to Dwg. NO. :","f_dwg",f.dwg);cell(M+LW,116,RW,18,"Time of Inspection :","f_tim",f.tim);
- box(M,134,CW,14,rgb(.86,.86,.86));ctxt("UNIT TECHNICAL DATA :",M,134,CW,14,10,fB);
- var hf=CW/2,rh=20,t0=148,a=hf*.6,b=hf-a;
- cell(M,t0,hf,rh,"UNIT NO. :","f_unit",f.unit);cell(M+hf,t0,hf,rh,"MANUFACTURER :","f_manu",f.manu);
- cell(M,t0+rh,hf,rh,"MODEL :","f_model",f.model);cell(M+hf,t0+rh,hf,rh,"SERVICE AREA :","f_area",f.area);
- cell(M,t0+2*rh,hf,rh,"TYPE :","f_type",f.type);cell(M+hf,t0+2*rh,a,rh,"MOTOR KW. :","f_kw",f.kw);cell(M+hf+a,t0+2*rh,b,rh,"FL. AMP. :","f_amp",f.amp);
- cell(M,t0+3*rh,hf,rh,"SERIAL NO. :","f_serial",f.serial);cell(M+hf,t0+3*rh,hf,rh,"RPM :","f_rpm",f.rpm);
- box(M,t0+4*rh,hf,rh);cell(M+hf,t0+4*rh,a,rh,"POWER SUPPLY :","f_pwr",f.pwr);cell(M+hf+a,t0+4*rh,b,rh,"STARTER TYPE :","f_start",f.start);
- cell(M,t0+5*rh,CW,rh,"TYPE OF IMPELLER :","f_imp",f.imp);
- t=t0+6*rh;box(M,t,CW,14,rgb(.86,.86,.86));ctxt("TESTING DATA :",M,t,CW,14,10,fB);
- var c=[32,215,138,138],xs=[M,M+32,M+247,M+385];t+=14;
- ["ITEM","DESCRIPTION","SPECIFIED","ACTUAL"].forEach(function(h,i){box(xs[i],t,c[i],16);ctxt(h,xs[i],t,c[i],16,10,fB);});t+=16;
- d.TD.forEach(function(r,i){
-  box(xs[0],t,c[0],rh);ctxt(String(i+1),xs[0],t,c[0],rh,10,fR);
-  box(xs[1],t,c[1],rh);
-  if(r[0]){txt(r[0],xs[1]+4,t+(rh-10)/2-1,10,fR);txt(r[1],xs[1]+c[1]-fR.widthOfTextAtSize(r[1],10)-6,t+(rh-10)/2-1,10,fR);}
-  else field("td"+i+"d",d.td[i][2],xs[1]+2,t+1,c[1]-4,rh-2,fR,11,{bare:true});
-  cell(xs[2],t,c[2],rh,"","td"+i+"s",d.td[i][0]);cell(xs[3],t,c[3],rh,"","td"+i+"a",d.td[i][1]);t+=rh;});
- box(M,t,CW,16);txt("TEST FUNCTION :",M+3,t+3,10,fB);t+=16;
+ box(M,62,CW,32);txt("Testing Item :",M+3,66,10,fB);field(nm("item"),f.item,M+70,65,CW-140,26,fB,17,{bare:true,center:true,color:red});
+ cell(M,94,hf,rh,"Project Name :",nm("site"),f.site);cell(M+hf,94,hf,rh,"Date of Testing :",nm("dt"),f.dt);
+ cell(M,114,CW,rh,"Serial No. :",nm("serial"),f.serial);
+ t=134;section("GENERAL INFORMATION :");
+ for(var i=0;i<d.G.length;i+=2){ensure(rh);var g=d.G[i],g2=d.G[i+1];cell(M,t,hf,rh,g[0]+" :",nm("g"),g[1]);if(g2)cell(M+hf,t,hf,rh,g2[0]+" :",nm("g"),g2[1]);else box(M+hf,t,hf,rh);t+=rh;}
+ var c=[32,215,138,138],xs=[M,M+32,M+247,M+385];
+ section("TESTING DATA :");thead(["#","DESCRIPTION","SPECIFIED","ACTUAL"],xs,c);
+ d.T.forEach(function(r,i){ensure(rh);box(xs[0],t,c[0],rh);ctxt(String(i+1),xs[0],t,c[0],rh,10,fR);
+  cell(xs[1],t,c[1],rh,"",nm("td"),r[0]);cell(xs[2],t,c[2],rh,"",nm("ts"),r[1]);cell(xs[3],t,c[3],rh,"",nm("ta"),r[2]);t+=rh;});
  var c2=[32,291,100,100],x2=[M,M+32,M+323,M+423];
- ["ITEM","DESCRIPTION","ACCEPTED","REJECTED"].forEach(function(h,i){box(x2[i],t,c2[i],16);ctxt(h,x2[i],t,c2[i],16,10,fB);});t+=16;
- d.TF.forEach(function(r,i){
-  box(x2[0],t,c2[0],rh);ctxt(String(i+1),x2[0],t,c2[0],rh,10,fR);box(x2[1],t,c2[1],rh);txt(r,x2[1]+4,t+(rh-10)/2-1,10,fR);
-  [2,3].forEach(function(k){box(x2[k],t,c2[k],rh);var cb=form.createCheckBox("tf"+i+k);cb.addToPage(page,{x:x2[k]+c2[k]/2-6,y:H-t-rh/2-6,width:12,height:12,borderColor:blk,borderWidth:1,backgroundColor:rgb(1,1,1)});if(d.tfv[i][k-2])cb.check();});
+ section("TEST FUNCTION :");thead(["#","DESCRIPTION","ACCEPTED","REJECTED"],x2,c2);
+ d.C.forEach(function(r,i){ensure(rh);box(x2[0],t,c2[0],rh);ctxt(String(i+1),x2[0],t,c2[0],rh,10,fR);cell(x2[1],t,c2[1],rh,"",nm("cd"),r[0]);
+  [2,3].forEach(function(k){box(x2[k],t,c2[k],rh);var cb=form.createCheckBox(nm("cb"));cb.addToPage(page,{x:x2[k]+c2[k]/2-6,y:H-t-rh/2-6,width:12,height:12,borderColor:blk,borderWidth:1,backgroundColor:rgb(1,1,1)});if(r[k-1])cb.check();});
   t+=rh;});
  if(d.sig){
-  var c0=90,cc=(CW-c0)/3,hts=[22,24,40,24,24],heads=["","Tested / Inspected by","Reviewed / Approved by :","Witness by :"],labs=["Name :","Signed :","Date :","Company :"],tp=t+10;
-  hts.forEach(function(h,r){var x0=M;for(var q=0;q<4;q++){var w=q?cc:c0;box(x0,tp,w,h);
-   if(r===0){if(q)ctxt(heads[q],x0,tp,w,h,12,fB);}
-   else if(q===0)txt(labs[r-1],x0+4,tp+(h-12)/2-1,12,fB);
-   else field("sig"+r+q,d.sig[r-1][q-1],x0+2,tp+2,w-4,h-4,fR,12,{bare:true});
-   x0+=w;}tp+=h;});
+  t+=10;ensure(134);
+  var c0=90,cc=(CW-c0)/3,hts=[22,24,40,24,24],heads=["","Tested / Inspected by","Reviewed / Approved by :","Witness by :"],labs=["Name :","Signed :","Date :","Company :"];
+  hts.forEach(function(h,r){var x0=M;for(var q=0;q<4;q++){var w=q?cc:c0;box(x0,t,w,h);
+   if(r===0){if(q)ctxt(heads[q],x0,t,w,h,12,fB);}
+   else if(q===0)txt(labs[r-1],x0+4,t+(h-12)/2-1,12,fB);
+   else field(nm("sig"),d.sig[r-1][q-1],x0+2,t+2,w-4,h-4,fR,12,{bare:true});
+   x0+=w;}t+=h;});
  }
  // ---- photo pages
  page=pdf.addPage([W,H]);
@@ -279,11 +271,10 @@ function b2u(b){var t=atob(b),a=new Uint8Array(t.length);for(var i=0;i<t.length;
 function du(u){return b2u(u.split(",")[1]);}
 async function makeTextPdf(){
  if(!window.PDFLib||!window.fontkit)throw new Error("lib");
- var v=function(i){var e=$(i);return e?e.value:"";},f={item:v("tech"),site:v("site"),dt:v("date"),serial:v("pump")};
- UF.forEach(function(r){f[r[0]]=v("f_"+r[0]);});
- var out=await buildTextPdf(PDFLib,fontkit,{fontR:b2u(FONT_R),fontB:b2u(FONT_B),logo:du(document.querySelector(".logo").src),TD:TD,TF:TF,f:f,
-  td:TD.map(function(r,i){return [v("td_"+i+"_s"),v("td_"+i+"_a"),v("td_"+i+"_d")];}),
-  tfv:TF.map(function(r,i){return [$("tf_"+i+"_a").checked,$("tf_"+i+"_r").checked];}),
+ var v=function(i){var e=$(i);return e?e.value:"";};
+ var out=await buildTextPdf(PDFLib,fontkit,{fontR:b2u(FONT_R),fontB:b2u(FONT_B),logo:du(document.querySelector(".logo").src),
+  f:{item:v("tech"),site:v("site"),dt:v("date"),serial:v("pump")},
+  G:G.map(function(x){return [x.l,x.v];}),T:T.map(function(x){return [x.d,x.s,x.a];}),C:C.map(function(x){return [x.d,x.a,x.r];}),
   sig:[0,1,2,3].map(function(r){return [0,1,2].map(function(c){return v("sg_"+r+"_"+c);});}),
   shots:shots.map(function(s){return {t:s.t,note:s.note,img:s.img?du(s.img):null};})});
  return new Blob([out],{type:"application/pdf"});
@@ -364,17 +355,32 @@ function paint(){var c=cur();L.className=c==="light"?"on":"";D.className=c==="da
 function set(t){r.setAttribute("data-theme",t);try{localStorage.setItem("theme",t)}catch(e){}paint();}
 try{var sv=localStorage.getItem("theme");if(sv==="dark"||sv==="light")r.setAttribute("data-theme",sv);}catch(e){}
 L.onclick=function(){set("light")};D.onclick=function(){set("dark")};paint();})();
-var UF=[["ref","REF NO"],["rdate","Date"],["loc","Location"],["dwg","Refer to Dwg. NO."],["tim","Time of Inspection"],["unit","UNIT NO."],["model","MODEL"],["type","TYPE"],["manu","MANUFACTURER"],["area","SERVICE AREA"],["kw","MOTOR KW."],["amp","FL. AMP."],["rpm","RPM"],["pwr","POWER SUPPLY"],["start","STARTER TYPE"],["imp","TYPE OF IMPELLER"]];
-var TD=[["DISCHARGE PRESSURE","(m)"],["SUCTION PRESSURE","(m)"],["MOTOR SPEED","(RPM)"],["RUNNING VOLTAGE","(Vac)"],["RUNNING CURRENT","(A)"],["OVERLOAD SETTING","(A)"],["CONTROL CIRCUIT VOLTAGE","(Vac)"],["MAIN BREAKER RATING","(A)"],["",""],["",""]];
-var TF=["FUNCTION CONTROL","AUTO START / STOP","MANUAL START / STOP","MECHANICAL COMPLETION & VISUAL INSPECT"];
-(function(){
- var h='<summary style="font-weight:700;cursor:pointer;font-size:16px">\ud83d\udccb Testing &amp; Commissioning Data</summary><div class="fgrid">'+UF.map(function(r){return '<div><label>'+r[1]+'</label><input type="text" id="f_'+r[0]+'"></div>';}).join("")+'</div>';
- h+='<div style="overflow-x:auto"><table class="sig" style="margin-top:10px"><tr><th>#</th><th>TESTING DATA</th><th>SPECIFIED</th><th>ACTUAL</th></tr>';
- TD.forEach(function(r,i){h+='<tr><th class="lab" style="width:auto">'+(i+1)+'</th>'+(r[0]?'<th class="lab" style="width:auto;white-space:nowrap">'+r[0]+' '+r[1]+'</th>':'<td><input type="text" id="td_'+i+'_d" placeholder="Description"></td>')+'<td><input type="text" id="td_'+i+'_s"></td><td><input type="text" id="td_'+i+'_a"></td></tr>';});
- h+='</table><table class="sig"><tr><th>#</th><th>TEST FUNCTION</th><th>ACCEPTED</th><th>REJECTED</th></tr>';
- TF.forEach(function(r,i){h+='<tr><th class="lab" style="width:auto">'+(i+1)+'</th><th class="lab" style="width:auto">'+r+'</th><td style="text-align:center"><input type="checkbox" id="tf_'+i+'_a"></td><td style="text-align:center"><input type="checkbox" id="tf_'+i+'_r"></td></tr>';});
- $("formx").innerHTML=h+'</table></div>';
-})();
+var G=["REF NO","Date","Location","Refer to Dwg. NO.","Time of Inspection","UNIT NO.","MODEL","TYPE","MANUFACTURER","SERVICE AREA","MOTOR KW.","FL. AMP.","RPM","POWER SUPPLY","STARTER TYPE","TYPE OF IMPELLER"].map(function(l){return {l:l,v:""};});
+var T=["DISCHARGE PRESSURE (m)","SUCTION PRESSURE (m)","MOTOR SPEED (RPM)","RUNNING VOLTAGE (Vac)","RUNNING CURRENT (A)","OVERLOAD SETTING (A)","CONTROL CIRCUIT VOLTAGE (Vac)","MAIN BREAKER RATING (A)","",""].map(function(d){return {d:d,s:"",a:""};});
+var C=["FUNCTION CONTROL","AUTO START / STOP","MANUAL START / STOP","MECHANICAL COMPLETION & VISUAL INSPECT"].map(function(d){return {d:d,a:false,r:false};});
+var fedit=false;
+function renderForm(){
+ var h='<summary style="font-weight:700;cursor:pointer;font-size:16px">\ud83d\udccb Testing &amp; Commissioning Data</summary>';
+ h+='<div style="margin:8px 0"><button class="sm" data-act="edit">'+(fedit?"\u2705 \u0e40\u0e2a\u0e23\u0e47\u0e08\u0e2a\u0e34\u0e49\u0e19\u0e01\u0e32\u0e23\u0e41\u0e01\u0e49\u0e44\u0e02\u0e2b\u0e31\u0e27\u0e02\u0e49\u0e2d":"\u270f\ufe0f \u0e41\u0e01\u0e49\u0e44\u0e02 / \u0e40\u0e1e\u0e34\u0e48\u0e21 / \u0e25\u0e14 \u0e2b\u0e31\u0e27\u0e02\u0e49\u0e2d\u0e22\u0e48\u0e2d\u0e22")+'</button></div>';
+ function del(k,i){return fedit?'<button class="sm" data-act="del" data-k="'+k+'" data-i="'+i+'" title="\u0e25\u0e1a">\u2715</button>':'';}
+ function add(k,t){return fedit?'<div style="margin:6px 0"><button class="sm" data-act="add" data-k="'+k+'">+ '+t+'</button></div>':'';}
+ h+='<h3 class="fh">1) General Information</h3><div class="fgrid">'+G.map(function(g,i){return '<div><div class="fl">'+(fedit?'<input type="text" data-k="g" data-i="'+i+'" data-f="l" value="'+esc(g.l)+'">'+del("g",i):esc(g.l))+'</div><input type="text" data-k="g" data-i="'+i+'" data-f="v" value="'+esc(g.v)+'"></div>';}).join("")+'</div>'+add("g","Add field");
+ h+='<h3 class="fh">2) Testing Data Table</h3><div style="overflow-x:auto"><table class="sig"><tr><th>#</th><th>DESCRIPTION</th><th>SPECIFIED</th><th>ACTUAL</th>'+(fedit?'<th></th>':'')+'</tr>';
+ T.forEach(function(r,i){h+='<tr><th class="lab" style="width:auto">'+(i+1)+'</th>'+((r.d&&!fedit)?'<th class="lab" style="width:auto;white-space:nowrap">'+esc(r.d)+'</th>':'<td><input type="text" placeholder="Description" data-k="t" data-i="'+i+'" data-f="d" value="'+esc(r.d)+'"></td>')+'<td><input type="text" data-k="t" data-i="'+i+'" data-f="s" value="'+esc(r.s)+'"></td><td><input type="text" data-k="t" data-i="'+i+'" data-f="a" value="'+esc(r.a)+'"></td>'+(fedit?'<td style="text-align:center">'+del("t",i)+'</td>':'')+'</tr>';});
+ h+='</table></div>'+add("t","Add row");
+ h+='<h3 class="fh">3) Checklist</h3><div style="overflow-x:auto"><table class="sig"><tr><th>#</th><th>TEST FUNCTION</th><th>ACCEPTED</th><th>REJECTED</th>'+(fedit?'<th></th>':'')+'</tr>';
+ C.forEach(function(r,i){h+='<tr><th class="lab" style="width:auto">'+(i+1)+'</th>'+((r.d&&!fedit)?'<th class="lab" style="width:auto">'+esc(r.d)+'</th>':'<td><input type="text" placeholder="Description" data-k="c" data-i="'+i+'" data-f="d" value="'+esc(r.d)+'"></td>')+'<td style="text-align:center"><input type="checkbox" data-k="c" data-i="'+i+'" data-f="a"'+(r.a?' checked':'')+'></td><td style="text-align:center"><input type="checkbox" data-k="c" data-i="'+i+'" data-f="r"'+(r.r?' checked':'')+'></td>'+(fedit?'<td style="text-align:center">'+del("c",i)+'</td>':'')+'</tr>';});
+ $("formx").innerHTML=h+'</table></div>'+add("c","Add item");
+}
+function fArr(k){return k==="g"?G:k==="t"?T:C;}
+function fSet(e){var t=e.target,k=t.dataset.k;if(!k)return;fArr(k)[+t.dataset.i][t.dataset.f]=t.type==="checkbox"?t.checked:t.value;}
+$("formx").addEventListener("input",fSet);$("formx").addEventListener("change",fSet);
+$("formx").addEventListener("click",function(e){var b=e.target.closest("[data-act]");if(!b)return;var a=b.dataset.act,k=b.dataset.k;
+ if(a==="edit")fedit=!fedit;
+ else if(a==="add")fArr(k).push(k==="g"?{l:"New Field",v:""}:k==="t"?{d:"",s:"",a:""}:{d:"New Item",a:false,r:false});
+ else if(a==="del")fArr(k).splice(+b.dataset.i,1);
+ renderForm();});
+renderForm();
 var V={s:1,x:0,y:0},pts={},lastD=0,vimg=$("vimg"),stage=$("vstage");
 function vapply(){vimg.style.transform="translate("+V.x+"px,"+V.y+"px) scale("+V.s+")";}
 function vopen(src){vimg.src=src;V={s:1,x:0,y:0};pts={};vapply();$("viewer").style.display="flex";}
